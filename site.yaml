@@ -1,0 +1,15 @@
+---
+- name: Wordpress Deployment on Ubuntu Server
+  hosts: wordpress_server
+  become: yes
+  vars:
+    domain_name: testdomain.com
+    db_password: qwe123
+  roles:
+    - common
+    - ssh
+    - postgresql
+    - wordpress
+    - nginx
+    - firewall
+    - final

@@ -1,0 +1,7 @@
+---
+- name: Finalize installation
+  debug:
+    msg: "finalizing"
+  notify: 
+    - Restart Apache2
+    - Restart Nginx

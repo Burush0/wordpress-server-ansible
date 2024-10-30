@@ -1,0 +1,128 @@
+---
+- name: Install WordPress dependencies
+  apt:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - apache2
+    - ghostscript
+    - libapache2-mod-php
+    - php
+    - php-bcmath
+    - php-curl
+    - php-imagick
+    - php-intl
+    - php-json
+    - php-mbstring
+    - php-mysql
+    - php-pgsql
+    - php-xml
+    - php-zip
+
+- name: Download WordPress
+  get_url:
+    url: https://wordpress.org/latest.tar.gz
+    dest: /tmp/wordpress.tar.gz
+
+- name: Create /srv/www directory
+  file:
+    path: /srv/www
+    state: directory
+
+- name: Extract WordPress
+  unarchive:
+    src: /tmp/wordpress.tar.gz
+    dest: /srv/www/
+    remote_src: yes
+
+- name: Download PG4WP
+  git:
+    repo: 'https://github.com/PostgreSQL-For-Wordpress/postgresql-for-wordpress.git'
+    dest: /tmp/postgresql-for-wordpress
+
+- name: Move PG4WP directory to WordPress content folder
+  copy:
+    src: /tmp/postgresql-for-wordpress/pg4wp
+    dest: /srv/www/wordpress/wp-content
+    remote_src: yes
+
+- name: Copy db.php to WordPress content folder
+  copy:
+    src: /tmp/postgresql-for-wordpress/pg4wp/db.php
+    dest: /srv/www/wordpress/wp-content/db.php
+    remote_src: yes
+
+- name: Create a wp-config.php file from the sample one
+  copy:
+    src: /srv/www/wordpress/wp-config-sample.php
+    dest: /srv/www/wordpress/wp-config.php
+    remote_src: yes
+
+# Do all the salt replacements and other sed magic OR use a template for wp-config.php instead idk yet
+#- name: Fetch random salts for wp-config.php
+#  uri:
+#    url: https://api.wordpress.org/secret-key/1.1/salt/
+#    return_content: yes
+#  register: 'wp_salt_array'
+
+#- name: set wp_salt fact
+#  set_fact:
+#    wp_salt: '{{ wp_salt_array.content }}'
+
+
+- name: Set database name in wp-config.php
+  replace:
+    path: /srv/www/wordpress/wp-config.php
+    regexp: 'database_name_here'
+    replace: 'wordpress'
+
+- name: Set database username in wp-config.php
+  replace:
+    path: /srv/www/wordpress/wp-config.php
+    regexp: 'username_here'
+    replace: 'wordpress'
+
+- name: Set database password in wp-config.php
+  replace:
+    path: /srv/www/wordpress/wp-config.php
+    regexp: 'password_here'
+    replace: "{{ db_password }}"
+
+- name: Add SSL configuration to wp-config.php
+  blockinfile:
+    path: /srv/www/wordpress/wp-config.php
+    insertafter: "/\\* Add any custom values between this line and the \"stop editing\" line\\. \\*/"
+    block: |
+      define( 'FORCE_SSL_ADMIN', true );
+      if( strpos( $_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false )
+          $_SERVER['HTTPS'] = 'on';
+
+- name: Grant www-data ownership to the /srv/www directory
+  file:
+    path: /srv/www
+    owner: www-data
+    group: www-data
+    recurse: yes
+
+- name: Set permissions for wp-config.php
+  file:
+    path: /srv/www/wordpress/wp-config.php
+    mode: '0644'
+
+- name: Change the port Apache2 is listening on (from 80 to 8080)
+  template:
+    src: ports.conf.j2
+    dest: /etc/apache2/ports.conf
+
+- name: Configure the WordPress VirtualHost
+  template:
+    src: virtualhost.wordpress.conf.j2
+    dest: /etc/apache2/sites-available/wordpress.conf
+
+- name: Enable the site and do all the other configurations of Apache2
+  shell: "{{ item }}"
+  notify: Restart Apache2
+  loop:
+    - "a2ensite wordpress"
+    - "a2enmod rewrite"
+    - "a2dissite 000-default"

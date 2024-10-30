@@ -1,0 +1,50 @@
+---
+- name: Install Nginx
+  apt:
+    name: nginx
+    state: present
+    update_cache: yes
+
+- name: Generate SSL key
+  shell: openssl req -x509 -noenc -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/nginx-selfsigned.key -out /etc/ssl/certs/nginx-selfsigned.crt -subj "/C=SE/ST=Vaestra Goetalands laen/L=Goeteborg/O=Burush Inc. /OU=DevOps Department/CN=Burush"
+  args:
+    creates:
+      - /etc/ssl/private/nginx-selfsigned.key
+      - /etc/ssl/certs/nginx-selfsigned.crt
+
+- name: Generate dhparams
+  shell: openssl dhparam -out /etc/nginx/dhparam.pem 2048
+  args:
+    creates: /etc/nginx/dhparam.pem
+
+- name: Configure self-signed snippet
+  template:
+    src: snippets.self-signed.conf.j2
+    dest: /etc/nginx/snippets/self-signed.conf
+
+- name: Configure SSL params snippet
+  template:
+    src: snippets.ssl-params.conf.j2
+    dest: /etc/nginx/snippets/ssl-params.conf
+
+- name: Configure Nginx as reverse proxy
+  template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/sites-available/wordpress
+
+- name: Enable Nginx site
+  file:
+    src: /etc/nginx/sites-available/wordpress
+    dest: /etc/nginx/sites-enabled/wordpress
+    state: link
+  notify: Restart Nginx
+
+- name: Create /var/www/test directory
+  file:
+    path: /var/www/test
+    state: directory
+
+- name: Add a sample website at /site endpoint
+  template:
+    src: index.html.j2
+    dest: /var/www/test/index.html
